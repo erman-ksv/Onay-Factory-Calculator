@@ -32,7 +32,7 @@ jobs:
           import { join } from 'node:path';
           const repository = 'erman-ksv/Onay-Factory-Calculator';
           const path = '.github/workflows/calculator-task-ci.yml';
-          const expectedBlob = 'e118d7f778ffe6137b3b30e89c8fd8a8ddf7229a';
+          const expectedBlob = '45fae4a292a04e89a631ad7ff2469a3af7265e70';
           const sha = process.env.GITHUB_SHA;
           const report = { version: 1, kind: 'calculator-setup-only', repository,
             candidateSha: sha, modelsRun: false, appTestsRun: false, writesPerformed: false,
