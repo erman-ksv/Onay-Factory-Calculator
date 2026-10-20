@@ -1,0 +1,90 @@
+name: Calculator setup readiness
+
+on:
+  push:
+    branches: ['feat/calculator-pilot-bootstrap']
+    paths:
+      - '.github/workflows/calculator-setup-readiness.yml'
+      - '.github/workflows/calculator-task-ci.yml'
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: calculator-bootstrap-readiness
+  cancel-in-progress: false
+
+jobs:
+  setup:
+    name: Bootstrap metadata only
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Read workflow provenance without model or application execution
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          HAS_FACTORY_READ_TOKEN: ${{ secrets.FACTORY_READ_TOKEN != '' }}
+        shell: bash
+        run: |
+          node --input-type=module <<'NODE'
+          import { writeFileSync } from 'node:fs';
+          import { join } from 'node:path';
+          const repository = 'erman-ksv/Onay-Factory-Calculator';
+          const path = '.github/workflows/calculator-task-ci.yml';
+          const expectedBlob = 'e118d7f778ffe6137b3b30e89c8fd8a8ddf7229a';
+          const sha = process.env.GITHUB_SHA;
+          const report = { version: 1, kind: 'calculator-setup-only', repository,
+            candidateSha: sha, modelsRun: false, appTestsRun: false, writesPerformed: false,
+            factoryReadSecretPresent: process.env.HAS_FACTORY_READ_TOKEN === 'true',
+            headMatches: false, blobMatches: false, workflow: { status: 'unverified' }, status: 'blocked' };
+          async function read(endpoint) {
+            const response = await fetch('https://api.github.com/repos/' + repository + endpoint, {
+              method: 'GET', redirect: 'error', signal: AbortSignal.timeout(10000),
+              headers: { Accept: 'application/vnd.github+json', Authorization: 'Bearer ' + process.env.GITHUB_TOKEN,
+                'X-GitHub-Api-Version': '2022-11-28' },
+            });
+            if (!response.ok) { await response.body?.cancel(); return { status: response.status }; }
+            if (!response.body) throw Error('metadata unavailable');
+            const reader = response.body.getReader(); const chunks = []; let size = 0;
+            try {
+              while (true) {
+                const chunk = await reader.read(); if (chunk.done) break;
+                size += chunk.value.byteLength;
+                if (size > 65536) { await reader.cancel(); throw Error('metadata oversized'); }
+                chunks.push(chunk.value);
+              }
+            } finally { reader.releaseLock(); }
+            return { status: response.status, data: JSON.parse(Buffer.concat(chunks).toString('utf8')) };
+          }
+          try {
+            if (process.env.GITHUB_REPOSITORY !== repository ||
+                process.env.GITHUB_REF !== 'refs/heads/feat/calculator-pilot-bootstrap' ||
+                !/^[a-f0-9]{40}$/.test(sha ?? '') || !process.env.GITHUB_TOKEN) throw Error('scope mismatch');
+            const head = await read('/git/ref/heads/feat%2Fcalculator-pilot-bootstrap');
+            report.headMatches = head.data?.ref === 'refs/heads/feat/calculator-pilot-bootstrap' &&
+              head.data?.object?.type === 'commit' && head.data.object.sha === sha;
+            const file = await read('/contents/' + path + '?ref=' + sha);
+            report.blobMatches = file.data?.type === 'file' && file.data?.path === path && file.data?.sha === expectedBlob;
+            const workflow = await read('/actions/workflows/calculator-task-ci.yml');
+            report.workflow = { status: 'unverified', httpStatus: workflow.status };
+            if (Number.isSafeInteger(workflow.data?.id) && workflow.data.id > 0 &&
+                workflow.data?.path === path && workflow.data?.state === 'active') {
+              report.workflow = { status: 'verified-active', id: workflow.data.id, path, blobSha: expectedBlob };
+            }
+            const after = await read('/git/ref/heads/feat%2Fcalculator-pilot-bootstrap');
+            report.headMatches = report.headMatches && after.data?.object?.sha === sha;
+            if (report.headMatches && report.blobMatches && report.workflow.status === 'verified-active') report.status = 'ready';
+          } catch { report.reasonCode = 'setup_metadata_unverified'; }
+          writeFileSync(join(process.env.RUNNER_TEMP, 'calculator-setup-readiness.json'), JSON.stringify(report, null, 2) + '\n', { mode: 0o600, flag: 'wx' });
+          console.log(JSON.stringify(report));
+          process.exitCode = report.status === 'ready' ? 0 : 10;
+          NODE
+      - name: Preserve source-free setup report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: calculator-setup-readiness
+          path: ${{ runner.temp }}/calculator-setup-readiness.json
+          if-no-files-found: error
+          retention-days: 7
