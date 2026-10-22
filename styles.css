@@ -1,0 +1,6 @@
+body{font-family:sans-serif;background:#f0f0f0;display:flex;justify-content:center;align-items:center;height:100vh;margin:0}
+.calculator{background:#fff;padding:1rem;border-radius:.5rem;box-shadow:0 2px 8px rgba(0,0,0,.2)}
+.display{background:#222;color:#0f0;font-size:2rem;padding:.5rem;text-align:right;min-width:12rem;border-radius:.25rem;margin-bottom:.5rem}
+.keys{display:grid;grid-template-columns:repeat(4,3rem);gap:.25rem}
+.key{font-size:1.2rem;padding:.5rem;background:#e0e0e0;border:none;border-radius:.25rem;cursor:pointer}
+.key:active{background:#ccc}
